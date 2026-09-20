@@ -7,16 +7,13 @@ const {
   GatewayIntentBits,
   Events,
   AttachmentBuilder,
-  EmbedBuilder,
 } = require("discord.js");
 
 const TOKEN = process.env.DISCORD_TOKEN;
 const CHANNEL_ID = process.env.CHANNEL_ID;
 
-// Saatlik kaç video
 const VIDEOS_PER_RUN = 10;
-// Aralık (ms) — 1 saat
-const INTERVAL_MS = 60 * 60 * 1000;
+const INTERVAL_MS = 60 * 60 * 1000; // 1 saat
 
 const TAGS = [
   "ass", "booty", "boobs", "tits", "pussy", "anal", "blowjob",
@@ -41,18 +38,29 @@ async function getRedGifsToken() {
 
 async function searchRedGifs(tag, count = 30) {
   if (!redgifsToken) await getRedGifsToken();
+
   const url = `https://api.redgifs.com/v2/gifs/search?tags=${encodeURIComponent(tag)}&order=top&count=${count}&type=g`;
+
   let res = await fetch(url, {
-    headers: { Authorization: `Bearer ${redgifsToken}`, "User-Agent": "Mozilla/5.0" },
+    headers: {
+      Authorization: `Bearer ${redgifsToken}`,
+      "User-Agent": "Mozilla/5.0",
+    },
   });
+
   if (res.status === 401) {
     await getRedGifsToken();
     res = await fetch(url, {
-      headers: { Authorization: `Bearer ${redgifsToken}`, "User-Agent": "Mozilla/5.0" },
+      headers: {
+        Authorization: `Bearer ${redgifsToken}`,
+        "User-Agent": "Mozilla/5.0",
+      },
     });
   }
+
   if (!res.ok) throw new Error(`RedGifs ${res.status}`);
   const data = await res.json();
+
   return (data.gifs || [])
     .map((g) => {
       const mediaUrl = g.urls?.hd || g.urls?.sd || null;
@@ -76,10 +84,10 @@ function pickRandomTag() {
 }
 
 async function postOneVideo(channel) {
-  // Birkaç tag dene
   for (let attempt = 0; attempt < 8; attempt++) {
     const tag = pickRandomTag();
     let gifs;
+
     try {
       gifs = await searchRedGifs(tag);
     } catch (e) {
@@ -90,7 +98,6 @@ async function postOneVideo(channel) {
     gifs = gifs.filter((g) => g.id && !sentIds.has(g.id));
     if (!gifs.length) continue;
 
-    // Karıştır
     gifs.sort(() => Math.random() - 0.5);
 
     for (const gif of gifs.slice(0, 6)) {
@@ -104,13 +111,8 @@ async function postOneVideo(channel) {
           name: `${tag}-${Date.now()}.mp4`,
         });
 
-        const embed = new EmbedBuilder()
-          .setColor(0xe91e63)
-          .setTitle(gif.title || tag)
-          .setDescription(`🎲 Rastgele · \`${tag}\` · RedGifs`)
-          .setTimestamp();
-
-        await channel.send({ embeds: [embed], files: [file] });
+        // Sadece video — ekstra mesaj yok
+        await channel.send({ files: [file] });
         return true;
       } catch (e) {
         console.log("Video atlanıyor:", e.message);
@@ -129,11 +131,11 @@ async function runHourlyPost() {
       return;
     }
     if (!channel.nsfw) {
-      console.error("Kanal NSFW değil. Discord'da kanalı NSFW yap.");
+      console.error("Kanal NSFW değil.");
       return;
     }
 
-    console.log(`[${new Date().toISOString()}] Saatlik post başlıyor (${VIDEOS_PER_RUN} video)...`);
+    console.log(`[${new Date().toISOString()}] Saatlik post: ${VIDEOS_PER_RUN} video`);
 
     let ok = 0;
     for (let i = 0; i < VIDEOS_PER_RUN; i++) {
@@ -141,14 +143,13 @@ async function runHourlyPost() {
       if (success) {
         ok++;
         console.log(`  ${ok}/${VIDEOS_PER_RUN} gönderildi`);
-        // Rate limit / spam için kısa bekleme
         await new Promise((r) => setTimeout(r, 3000));
       } else {
-        console.log(`  ${i + 1}. video bulunamadı, geçiliyor`);
+        console.log(`  ${i + 1}. video bulunamadı`);
       }
     }
 
-    console.log(`Bitti: ${ok}/${VIDEOS_PER_RUN} video atıldı.`);
+    console.log(`Bitti: ${ok}/${VIDEOS_PER_RUN}`);
   } catch (err) {
     console.error("Saatlik post hatası:", err.message);
   }
@@ -156,6 +157,7 @@ async function runHourlyPost() {
 
 client.once(Events.ClientReady, async () => {
   console.log(`✅ AutoPost bot: ${client.user.tag}`);
+
   try {
     await getRedGifsToken();
     console.log("RedGifs token alındı");
@@ -163,12 +165,12 @@ client.once(Events.ClientReady, async () => {
     console.error("RedGifs token hatası:", e.message);
   }
 
-  // Bot açılınca bir kez dene (isteğe bağlı)
+  // Açılışta bir kez çalıştır
   await runHourlyPost();
 
   // Her 1 saatte bir
   setInterval(runHourlyPost, INTERVAL_MS);
-  console.log("Saatlik zamanlayıcı aktif (1 saat).");
+  console.log("Zamanlayıcı aktif (1 saat).");
 });
 
 // Render ping
